@@ -22,16 +22,16 @@ func main() {
 	configFlag := flag.String("config", "", "Path to the configuration JSON file")
 	flag.Parse()
 
-	log.Println("[INFO] Starting Hysteria 2 Admin Panel...")
+	log.Println("[INFO] Starting hu-ui Admin Panel...")
 
 	// Определяем путь к конфигурации
 	configPath := *configFlag
 	if configPath == "" {
-		// Пытаемся найти config.json в текущей папке или /etc/hysteria-panel/
+		// Пытаемся найти config.json в текущей папке или /etc/hu-ui/
 		if _, err := os.Stat("config.json"); err == nil {
 			configPath = "config.json"
-		} else if _, err := os.Stat("/etc/hysteria-panel/config.json"); err == nil {
-			configPath = "/etc/hysteria-panel/config.json"
+		} else if _, err := os.Stat("/etc/hu-ui/config.json"); err == nil {
+			configPath = "/etc/hu-ui/config.json"
 		}
 	}
 
@@ -83,7 +83,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("[SUCCESS] Web Admin Panel is listening on http://%s", serverAddr)
+		log.Printf("[SUCCESS] Web Admin Panel (hu-ui) is listening on http://%s", serverAddr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[ERROR] Failed to listen and serve: %v", err)
 		}
@@ -94,12 +94,12 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Println("[INFO] Shutting down Hysteria 2 Admin Panel...")
+	log.Println("[INFO] Shutting down hu-ui Admin Panel...")
 
 	// Останавливаем процесс ядра Hysteria 2
 	if err := hysteria.HysteriaMgr.Stop(); err != nil {
 		log.Printf("[WARNING] Error stopping Hysteria 2 during shutdown: %v", err)
 	}
 
-	log.Println("[SUCCESS] Hysteria 2 Panel stopped gracefully.")
+	log.Println("[SUCCESS] hu-ui Panel stopped gracefully.")
 }

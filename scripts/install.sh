@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Скрипт установки Hysteria 2 Admin Panel
+# Скрипт установки hu-ui
 # Предназначен для работы на Ubuntu/Debian/CentOS (Linux x86_64 / aarch64)
 # Поддерживает ключ --warp для автоматической настройки Cloudflare WARP
 
@@ -26,12 +26,12 @@ fi
 
 # Константы путей
 PANEL_BIN_DIR="/usr/local/bin"
-PANEL_BIN_PATH="${PANEL_BIN_DIR}/hysteria-panel"
-PANEL_CONFIG_DIR="/etc/hysteria-panel"
+PANEL_BIN_PATH="${PANEL_BIN_DIR}/hu-ui"
+PANEL_CONFIG_DIR="/etc/hu-ui"
 PANEL_CONFIG_PATH="${PANEL_CONFIG_DIR}/config.json"
-PANEL_DATA_DIR="/var/lib/hysteria-panel"
-PANEL_DB_PATH="${PANEL_DATA_DIR}/hysteria-panel.db"
-SYSTEMD_SERVICE_PATH="/etc/systemd/system/hysteria-panel.service"
+PANEL_DATA_DIR="/var/lib/hu-ui"
+PANEL_DB_PATH="${PANEL_DATA_DIR}/hu-ui.db"
+SYSTEMD_SERVICE_PATH="/etc/systemd/system/hu-ui.service"
 
 # Определение архитектуры
 ARCH=$(uname -m)
@@ -51,7 +51,6 @@ esac
 # Функция установки Cloudflare WARP
 install_warp() {
     echo -e "${INFO} Обнаружен флаг --warp. Начинаем установку Cloudflare WARP..."
-    # Используем популярный и надежный автоматический скрипт настройки WARP от fscarmen
     if wget -N https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh; then
         bash menu.sh auto
         echo -e "${SUCCESS} Cloudflare WARP успешно настроен и запущен."
@@ -65,7 +64,7 @@ if [[ "$*" == *"--warp"* ]]; then
     install_warp
 fi
 
-echo -e "${INFO} Начало установки Hysteria 2 Admin Panel..."
+echo -e "${INFO} Начало установки hu-ui..."
 
 # 1. Установка необходимых утилит
 echo -e "${INFO} Проверка и установка зависимостей (curl, sqlite3, openssl, qrencode)..."
@@ -129,14 +128,13 @@ else
 fi
 
 # 4. Скачивание бинарника панели
-DOWNLOAD_URL="https://github.com/dragunovv/hysteria-panel/releases/latest/download/hysteria-panel-${ARCH_SUFFIX}"
+DOWNLOAD_URL="https://github.com/poltargaste/hu-ui/releases/latest/download/hu-ui-${ARCH_SUFFIX}"
 
 echo -e "${INFO} Скачивание исполняемого файла панели..."
-# Временно создаем пустой бинарник или скачиваем его, если URL рабочий.
-# curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
+# В реальном сервере: curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
 if [ ! -f "$PANEL_BIN_PATH" ]; then
     echo -e "${WARNING} Настоящий URL релиза недоступен. Создается заглушка бинарника для настройки сервиса."
-    echo '#!/bin/bash\necho "Hysteria Panel Stub Running"\nsleep infinity' > "$PANEL_BIN_PATH"
+    echo '#!/bin/bash\necho "hu-ui Stub Running"\nsleep infinity' > "$PANEL_BIN_PATH"
 fi
 chmod +x "$PANEL_BIN_PATH"
 
@@ -185,7 +183,7 @@ INSERT INTO users (id, username, auth_value, is_enabled) VALUES (1, '$CLIENT_USE
 INSERT INTO user_stats (user_id, traffic_tx, traffic_rx) VALUES (1, 0, 0);
 EOF
 
-    # Записываем данные админа для инициализации бэкендом (будет сгенерирован bcrypt хэш)
+    # Записываем данные админа для инициализации бэкендом
     INIT_FILE="${PANEL_CONFIG_DIR}/.init_admin"
     cat <<EOF > "$INIT_FILE"
 {
@@ -200,7 +198,7 @@ fi
 echo -e "${INFO} Создание systemd службы..."
 cat <<EOF > "$SYSTEMD_SERVICE_PATH"
 [Unit]
-Description=Hysteria 2 Admin Panel
+Description=hu-ui Admin Panel
 After=network.target
 
 [Service]
@@ -218,7 +216,7 @@ EOF
 
 # Перезапуск демона systemd
 systemctl daemon-reload
-systemctl enable hysteria-panel.service
+systemctl enable hu-ui.service
 
 # Формирование клиентской ссылки подключения
 if [ "$IS_FIRST_INSTALL" = true ]; then
@@ -230,7 +228,7 @@ if [ "$IS_FIRST_INSTALL" = true ]; then
 fi
 
 echo -e "\n=================================================="
-echo -e "${SUCCESS} Hysteria 2 Admin Panel успешно установлена!"
+echo -e "${SUCCESS} hu-ui Admin Panel успешно установлена!"
 if [ "$IS_FIRST_INSTALL" = true ]; then
     echo -e "Адрес панели:      ${GREEN}http://${SERVER_IP}:${PANEL_PORT}${PLAIN}"
     echo -e "Логин админа:      ${GREEN}${ADMIN_USER}${PLAIN}"
@@ -255,8 +253,8 @@ else
     echo -e "Служба панели обновлена и перезапущена."
 fi
 echo -e "\nУправление службой:"
-echo -e "  Запуск:    systemctl start hysteria-panel"
-echo -e "  Остановка: systemctl stop hysteria-panel"
-echo -e "  Статус:    systemctl status hysteria-panel"
-echo -e "  Логи:      systemctl status -l --no-pager hysteria-panel"
+echo -e "  Запуск:    systemctl start hu-ui"
+echo -e "  Остановка: systemctl stop hu-ui"
+echo -e "  Статус:    systemctl status hu-ui"
+echo -e "  Логи:      systemctl status -l --no-pager hu-ui"
 echo -e "==================================================\n"
