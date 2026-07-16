@@ -48,6 +48,15 @@ case "$ARCH" in
         ;;
 esac
 
+# Определяем реальный физический IP сервера в обход WARP/WireGuard
+# Используем таблицу маршрутизации для нахождения внешнего интерфейса и его IP
+SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' || echo "")
+
+# Если через таблицу маршрутов определить не удалось, используем резервный curl (пока WARP еще не включен)
+if [ -z "$SERVER_IP" ]; then
+    SERVER_IP=$(curl -s https://api.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip || echo "YOUR_SERVER_IP")
+fi
+
 # Функция установки Cloudflare WARP
 install_warp() {
     echo -e "${INFO} Обнаружен флаг --warp. Начинаем установку Cloudflare WARP..."
@@ -75,9 +84,6 @@ elif command -v yum >/dev/null; then
 else
     echo -e "${WARNING} Не удалось определить пакетный менеджер. Убедитесь, что curl, sqlite3, openssl и qrencode установлены."
 fi
-
-# Получаем внешний IP сервера
-SERVER_IP=$(curl -s https://api.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip || echo "YOUR_SERVER_IP")
 
 # 2. Создание директорий
 echo -e "${INFO} Создание рабочих директорий панели..."
@@ -125,20 +131,47 @@ EOF
 else
     # Чтение существующего конфига
     PANEL_PORT=$(grep -o '"panel_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
-    PANEL_PREFIX=$(grep -o '"web_base_path":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4 | tr -d '/')
+    PANEL_PREFIX=$(grep -o '"web_base_path":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4 | tr -d '/' || echo "")
     HYSTERIA_PORT=$(grep -o '"hysteria_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
     HYSTERIA_OBFS=$(grep -o '"hysteria_obfs":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4)
-    echo -e "${INFO} Обнаружена существующая конфигурация. Порт панели: $PANEL_PORT"
+    
+    # Если в существующем конфиге нет web_base_path (переход со старой версии), генерируем его
+    if [ -z "$PANEL_PREFIX" ]; then
+        echo -e "${INFO} Обновление конфигурации: генерация секретного префикса пути..."
+        PANEL_PREFIX=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
+        JWT_SECRET=$(grep -o '"jwt_secret":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4 || openssl rand -hex 32)
+        
+        cat <<EOF > "$PANEL_CONFIG_PATH"
+{
+  "panel_host": "0.0.0.0",
+  "panel_port": $PANEL_PORT,
+  "web_base_path": "/$PANEL_PREFIX",
+  "db_path": "$PANEL_DB_PATH",
+  "hysteria_bin": "${PANEL_DATA_DIR}/bin/hysteria",
+  "hysteria_config": "${PANEL_DATA_DIR}/hysteria.yaml",
+  "hysteria_port": $HYSTERIA_PORT,
+  "hysteria_obfs": "$HYSTERIA_OBFS",
+  "jwt_secret": "$JWT_SECRET"
+}
+EOF
+    else
+        echo -e "${INFO} Обнаружена существующая конфигурация. Порт панели: $PANEL_PORT, префикс: /$PANEL_PREFIX"
+    fi
 fi
 
 # 4. Скачивание бинарника панели
 DOWNLOAD_URL="https://github.com/poltargaste/hu-ui/releases/latest/download/hu-ui-${ARCH_SUFFIX}"
 
 echo -e "${INFO} Скачивание исполняемого файла панели..."
-# В реальной среде: curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
+# В реальной среде пытаемся скачать бинарник релиза
+# curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
 if [ ! -f "$PANEL_BIN_PATH" ]; then
     echo -e "${WARNING} Настоящий URL релиза недоступен. Создается заглушка бинарника для настройки сервиса."
-    echo '#!/bin/bash\necho "hu-ui Stub Running"\nsleep infinity' > "$PANEL_BIN_PATH"
+    cat << 'EOF' > "$PANEL_BIN_PATH"
+#!/bin/bash
+echo "hu-ui Stub Running"
+sleep infinity
+EOF
 fi
 chmod +x "$PANEL_BIN_PATH"
 
@@ -183,8 +216,8 @@ EOF
 
     # Вставляем первого дефолтного пользователя
     sqlite3 "$PANEL_DB_PATH" <<EOF
-INSERT INTO users (id, username, auth_value, is_enabled) VALUES (1, '$CLIENT_USER', '$CLIENT_PASS', 1);
-INSERT INTO user_stats (user_id, traffic_tx, traffic_rx) VALUES (1, 0, 0);
+INSERT OR IGNORE INTO users (id, username, auth_value, is_enabled) VALUES (1, '$CLIENT_USER', '$CLIENT_PASS', 1);
+INSERT OR IGNORE INTO user_stats (user_id, traffic_tx, traffic_rx) VALUES (1, 0, 0);
 EOF
 
     # Записываем данные админа для инициализации бэкендом
