@@ -1,133 +1,83 @@
-# Hysteria 2 VPN Admin Panel 🚀
+# hysteria-panel
 
-Современная веб-панель управления VPN-ядром **Hysteria 2**, вдохновленная лучшими практиками 3x-ui. Разработана для быстрой установки на VDS/VPS серверы под управлением Linux с целью предоставления и контроля клиентского доступа к протоколу Hysteria 2.
+A simple web admin panel for managing Hysteria 2 VPN servers. Built with Go (Gin) and React (MUI) using SQLite for storage. The frontend static files are compiled into the Go binary using `go:embed`, allowing the panel to be distributed as a single executable.
 
-Проект состоит из высокопроизводительного бэкенда на **Go**, интерактивного фронтенда на **React + MUI (Material UI)** и базы данных **SQLite**, собранных в единый легковесный бинарный файл через `go:embed`.
+## Features
 
----
+- Hysteria 2 client management (CRUD operations)
+- Upload/download speed limits per user
+- Traffic volume limits (data caps) and account expiration dates
+- Background traffic statistics polling via Hysteria 2 HTTP API
+- Automatic user disconnection (core reloads) upon reaching traffic caps or expiration
+- Self-signed TLS certificate generation on the first run (if custom certs are not provided)
+- Shareable connection links (`hysteria2://`) and QR codes generation
+- Live control of the Hysteria 2 core process (start, stop, restart) via the web interface
+- Automatic download of the Hysteria 2 binary on startup
 
-## ✨ Ключевые возможности
+## Quick Installation
 
-- **Автономный процесс-менеджер**: Панель сама скачивает бинарник Hysteria 2 (если его нет), генерирует `config.yaml` на основе данных базы и управляет процессом ядра (запуск, остановка, graceful restart при изменениях).
-- **Автоматический SSL**: При отсутствии пользовательских TLS-сертификатов панель автоматически генерирует самоподписанную пару cert/key при первом запуске.
-- **Управление пользователями**: Полноценный CRUD для управления клиентами. Поддержка включения/выключения аккаунтов.
-- **Гибкие лимиты и подписки**:
-  - Ограничение скорости отдачи (Tx) и загрузки (Rx) индивидуально для каждого клиента.
-  - Лимитирование общего объема трафика (в GB).
-  - Установка срока действия аккаунта (Expire Date).
-- **Фоновый сбор статистики**: Панель опрашивает API статистики Hysteria 2, суммирует потребленный трафик и автоматически блокирует клиентов (с перезагрузкой ядра), если они превысили лимиты или у них истек срок действия.
-- **Интерактивный UI**: Генерация клиентских ссылок подключения (`hysteria2://`) и QR-кодов для мгновенного импорта в приложения (NekoBox, Sing-box, Shadowrocket, Hysteria CLI).
-- **Безопасность**: Защита панели по стандарту JWT (JSON Web Tokens), хэширование паролей администратора по алгоритму Bcrypt.
-- **Простой деплой**: Установка одной bash-командой. Панель разворачивается в качестве systemd-сервиса с автоматическим выбором портов.
-
----
-
-## 🛠 Технологический стек
-
-* **Backend**: Go 1.22+ (Gin Web Framework, GORM, SQLite3, YAML.v3, Go:embed)
-* **Frontend**: React 18, Vite 6, Material UI (MUI 5), Axios, React Router 6, QrCode.react
-* **Database**: SQLite3 (`hysteria-panel.db`)
-* **CI/CD & Deploy**: GitHub Actions (автоматическая кросс-компиляция при создании релизов), Systemd Service, Bash Installer
-
----
-
-## 📥 Быстрая установка (Ubuntu/Debian/CentOS)
-
-Для установки панели на чистый Linux-сервер выполните следующую команду в терминале (требуются права `root`):
+To install the panel on Linux (Ubuntu/Debian/CentOS), run the following command:
 
 ```bash
 bash <(curl -Ls https://raw.githubusercontent.com/dragunovv/hysteria-panel/main/scripts/install.sh)
 ```
 
-### Что сделает скрипт установки:
-1. Установит необходимые зависимости (`curl`, `sqlite3`, `openssl`).
-2. Создаст рабочие директории:
-   - `/etc/hysteria-panel` — для файла конфигурации `config.json`.
-   - `/var/lib/hysteria-panel` — для БД SQLite и исполняемого ядра Hysteria.
-3. Сгенерирует случайный порт для веб-панели (10000–30000) и порт Hysteria 2 (30000–50000).
-4. Создаст случайный ключ обфускации (`obfs`) и сгенерирует случайные логин/пароль администратора при первой установке.
-5. Скачает актуальный бинарник панели под архитектуру вашего процессора (amd64 / arm64).
-6. Настроит и запустит systemd-сервис `hysteria-panel.service` с автозапуском при перезагрузке ОС.
-7. Выведет на экран сгенерированные учетные данные для первого входа.
+The script will automatically:
+1. Detect architecture and download the compiled panel binary
+2. Generate random ports for the web panel and Hysteria 2 core
+3. Generate random administrator credentials for the initial login
+4. Create the SQLite database and run migration tables
+5. Set up and start the systemd service (`hysteria-panel.service`)
 
----
+## Build from Source
 
-## 💻 Ручная сборка и запуск из исходников
+### Requirements
+- Go 1.22 or higher
+- Node.js 20 or higher
 
-Если вы хотите собрать панель самостоятельно:
+### Steps
 
-### Требования
-- Установленный [Go](https://go.dev/doc/install) версии 1.22 или выше.
-- Установленный [Node.js](https://nodejs.org/en/download) версии 20 или выше с пакетным менеджером `npm`.
-
-### Шаги сборки:
-
-1. **Клонируйте репозиторий**:
-   ```bash
-   git clone https://github.com/dragunovv/hysteria-panel.git
-   cd hysteria-panel
-   ```
-
-2. **Соберите фронтенд**:
+1. Build the frontend:
    ```bash
    cd frontend
    npm install
    npm run build
    cd ..
    ```
-   *Сборка React-приложения будет сохранена в директорию `frontend/dist`.*
 
-3. **Соберите бэкенд на Go**:
+2. Compile the backend:
    ```bash
    go mod tidy
    go build -o hysteria-panel .
    ```
-   *Go автоматически возьмет файлы из `frontend/dist` и встроит их в итоговый исполняемый файл `hysteria-panel`.*
 
-4. **Запустите панель**:
-   ```bash
-   ./hysteria-panel
-   ```
-   *При первом запуске в текущей папке создадутся файл настроек `config.json` и база данных `hysteria-panel.db`. Вы увидите логин и пароль по умолчанию в выводе консоли.*
+## Service Management
 
----
-
-## 📈 Управление службой через systemd
-
-После стандартной установки вы можете управлять панелью с помощью следующих команд:
-
-* **Запуск**: `systemctl start hysteria-panel`
-* **Остановка**: `systemctl stop hysteria-panel`
-* **Перезапуск**: `systemctl restart hysteria-panel`
-* **Статус службы**: `systemctl status hysteria-panel`
-* **Просмотр логов в реальном времени**: `journalctl -u hysteria-panel -f`
-
----
-
-## 🗺 Структура проекта
-
-```text
-hysteria-panel/
-├── .github/
-│   └── workflows/
-│       └── release.yml         # CI/CD: Автосборка релизов
-├── backend/
-│   ├── api/                    # REST API обработчики и роутинг
-│   ├── config/                 # Парсинг настроек панели
-│   ├── database/               # Модели БД и инициализация SQLite
-│   └── hysteria/               # Процесс-менеджер ядра, опрос статистики
-├── frontend/                   # Исходный код React + MUI
-│   ├── dist/                   # Директория для сборки фронтенда
-│   └── src/                    # Компоненты, страницы и хуки
-├── scripts/
-│   └── install.sh              # Скрипт автоустановки
-├── embed.go                    # Встраивание статики через go:embed
-├── main.go                     # Точка входа в Go приложение
-└── README.md                   # Документация проекта
+```bash
+systemctl start hysteria-panel    # start panel
+systemctl stop hysteria-panel     # stop panel
+systemctl restart hysteria-panel  # restart panel
+systemctl status hysteria-panel   # service status
+journalctl -u hysteria-panel -f   # live logs
 ```
 
----
+## Configuration Schema (config.json)
 
-## 🔒 Лицензия
+The default configuration file is generated at `/etc/hysteria-panel/config.json`:
 
-Этот проект распространяется под лицензией [MIT](LICENSE). Вы можете свободно использовать, модифицировать и распространять его.
+```json
+{
+  "panel_host": "0.0.0.0",
+  "panel_port": 12345,
+  "db_path": "/var/lib/hysteria-panel/hysteria-panel.db",
+  "hysteria_bin": "/var/lib/hysteria-panel/bin/hysteria",
+  "hysteria_config": "/var/lib/hysteria-panel/hysteria.yaml",
+  "hysteria_port": 34567,
+  "hysteria_obfs": "random_obfs_password",
+  "jwt_secret": "random_jwt_secret_hash"
+}
+```
+
+## License
+
+MIT
