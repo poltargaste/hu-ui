@@ -19,7 +19,11 @@ A simple web admin panel for managing Hysteria 2 VPN servers. Built with Go (Gin
 To install the panel on Linux (Ubuntu/Debian/CentOS), run the following command:
 
 ```bash
+# Standard installation
 bash <(curl -Ls https://raw.githubusercontent.com/dragunovv/hysteria-panel/main/scripts/install.sh)
+
+# Installation with Cloudflare WARP auto-configuration for the server
+bash <(curl -Ls https://raw.githubusercontent.com/dragunovv/hysteria-panel/main/scripts/install.sh) --warp
 ```
 
 The script will automatically:

@@ -2,6 +2,7 @@
 
 # Скрипт установки Hysteria 2 Admin Panel
 # Предназначен для работы на Ubuntu/Debian/CentOS (Linux x86_64 / aarch64)
+# Поддерживает ключ --warp для автоматической настройки Cloudflare WARP
 
 set -e
 
@@ -47,17 +48,37 @@ case "$ARCH" in
         ;;
 esac
 
+# Функция установки Cloudflare WARP
+install_warp() {
+    echo -e "${INFO} Обнаружен флаг --warp. Начинаем установку Cloudflare WARP..."
+    # Используем популярный и надежный автоматический скрипт настройки WARP от fscarmen
+    if wget -N https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh; then
+        bash menu.sh auto
+        echo -e "${SUCCESS} Cloudflare WARP успешно настроен и запущен."
+    else
+        echo -e "${WARNING} Не удалось скачать скрипт автонастройки WARP. Пропускаем..."
+    fi
+}
+
+# Проверка флага --warp в аргументах
+if [[ "$*" == *"--warp"* ]]; then
+    install_warp
+fi
+
 echo -e "${INFO} Начало установки Hysteria 2 Admin Panel..."
 
 # 1. Установка необходимых утилит
-echo -e "${INFO} Проверка и установка зависимостей (curl, sqlite3, openssl)..."
+echo -e "${INFO} Проверка и установка зависимостей (curl, sqlite3, openssl, qrencode)..."
 if command -v apt-get >/dev/null; then
-    apt-get update -y && apt-get install -y curl sqlite3 openssl
+    apt-get update -y && apt-get install -y curl sqlite3 openssl qrencode
 elif command -v yum >/dev/null; then
-    yum install -y curl sqlite3 openssl
+    yum install -y curl sqlite3 openssl qrencode
 else
-    echo -e "${WARNING} Не удалось определить пакетный менеджер. Убедитесь, что curl, sqlite3 и openssl установлены."
+    echo -e "${WARNING} Не удалось определить пакетный менеджер. Убедитесь, что curl, sqlite3, openssl и qrencode установлены."
 fi
+
+# Получаем внешний IP сервера
+SERVER_IP=$(curl -s https://api.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip || echo "YOUR_SERVER_IP")
 
 # 2. Создание директорий
 echo -e "${INFO} Создание рабочих директорий панели..."
@@ -65,7 +86,7 @@ mkdir -p "$PANEL_CONFIG_DIR"
 mkdir -p "$PANEL_DATA_DIR"
 mkdir -p "${PANEL_DATA_DIR}/bin" # Для хранения бинарника ядра Hysteria
 
-# 3. Генерация случайного порта и учетных данных при первой установке
+# 3. Генерация настроек при первой установке
 IS_FIRST_INSTALL=false
 if [ ! -f "$PANEL_CONFIG_PATH" ]; then
     IS_FIRST_INSTALL=true
@@ -81,6 +102,10 @@ if [ ! -f "$PANEL_CONFIG_PATH" ]; then
     # Случайный обфускационный пароль для Hysteria
     HYSTERIA_OBFS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
     
+    # Генерация первого дефолтного VPN-клиента
+    CLIENT_USER="default_client"
+    CLIENT_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 12)
+
     # Создание JSON конфигурации панели
     cat <<EOF > "$PANEL_CONFIG_PATH"
 {
@@ -98,17 +123,16 @@ EOF
 else
     # Чтение существующего порта из конфига
     PANEL_PORT=$(grep -o '"panel_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
+    HYSTERIA_PORT=$(grep -o '"hysteria_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
+    HYSTERIA_OBFS=$(grep -o '"hysteria_obfs":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4)
     echo -e "${INFO} Обнаружена существующая конфигурация. Порт панели: $PANEL_PORT"
 fi
 
 # 4. Скачивание бинарника панели
-# (Здесь используется заглушка URL, в реальном сценарии это будет URL релиза на GitHub)
 DOWNLOAD_URL="https://github.com/dragunovv/hysteria-panel/releases/latest/download/hysteria-panel-${ARCH_SUFFIX}"
 
 echo -e "${INFO} Скачивание исполняемого файла панели..."
 # Временно создаем пустой бинарник или скачиваем его, если URL рабочий.
-# Поскольку реального релиза еще нет, мы просто запишем заглушку и сделаем файл исполняемым.
-# Для тестирования установки мы создаем заглушку, но в продакшене тут будет curl.
 # curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
 if [ ! -f "$PANEL_BIN_PATH" ]; then
     echo -e "${WARNING} Настоящий URL релиза недоступен. Создается заглушка бинарника для настройки сервиса."
@@ -116,17 +140,10 @@ if [ ! -f "$PANEL_BIN_PATH" ]; then
 fi
 chmod +x "$PANEL_BIN_PATH"
 
-# 5. Инициализация администратора в базе данных (только при первой установке)
+# 5. Инициализация базы данных и таблиц
 if [ "$IS_FIRST_INSTALL" = true ]; then
-    echo -e "${INFO} Инициализация учетной записи администратора в SQLite..."
-    # Мы можем запустить панель с флагами инициализации, чтобы она сама создала базу данных
-    # и добавила администратора с хэшированным паролем.
-    # Пример: $PANEL_BIN_PATH --init-db --admin-user "$ADMIN_USER" --admin-pass "$ADMIN_PASS"
-    # Пока панель не скомпилирована, мы сохраняем учетные данные во временный файл, 
-    # чтобы бэкенд при первом обычном запуске создал пользователя, ЕСЛИ база пуста.
-    # Или сделаем это через сам скрипт, записав в SQLite напрямую, если утилита sqlite3 установлена:
+    echo -e "${INFO} Инициализация таблиц базы данных SQLite..."
     
-    # Создадим базу данных и таблицы
     sqlite3 "$PANEL_DB_PATH" <<EOF
 CREATE TABLE IF NOT EXISTS admins (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -162,10 +179,13 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 EOF
 
-    # Генерируем bcrypt хэш пароля с помощью openssl/python/php или оставим генерацию хэша бэкенду.
-    # Поскольку bcrypt сложно сгенерировать чистым bash без python/node, мы запишем пароль во временный файл,
-    # который бэкенд считает при первом запуске, захэширует, запишет в базу данных и удалит этот файл.
-    # Путь к временному файлу инициализации:
+    # Вставляем первого дефолтного пользователя
+    sqlite3 "$PANEL_DB_PATH" <<EOF
+INSERT INTO users (id, username, auth_value, is_enabled) VALUES (1, '$CLIENT_USER', '$CLIENT_PASS', 1);
+INSERT INTO user_stats (user_id, traffic_tx, traffic_rx) VALUES (1, 0, 0);
+EOF
+
+    # Записываем данные админа для инициализации бэкендом (будет сгенерирован bcrypt хэш)
     INIT_FILE="${PANEL_CONFIG_DIR}/.init_admin"
     cat <<EOF > "$INIT_FILE"
 {
@@ -200,25 +220,43 @@ EOF
 systemctl daemon-reload
 systemctl enable hysteria-panel.service
 
-# Запуск службы (в реальной среде)
-# systemctl start hysteria-panel.service
+# Формирование клиентской ссылки подключения
+if [ "$IS_FIRST_INSTALL" = true ]; then
+    VPN_LINK="hysteria2://${CLIENT_PASS}@${SERVER_IP}:${HYSTERIA_PORT}/?insecure=1"
+    if [ -n "$HYSTERIA_OBFS" ]; then
+        VPN_LINK="${VPN_LINK}&obfs=aes-128-gcm&obfs-password=${HYSTERIA_OBFS}"
+    fi
+    VPN_LINK="${VPN_LINK}#${CLIENT_USER}-Hysteria2"
+fi
 
 echo -e "\n=================================================="
 echo -e "${SUCCESS} Hysteria 2 Admin Panel успешно установлена!"
 if [ "$IS_FIRST_INSTALL" = true ]; then
-    echo -e "Адрес панели:      ${GREEN}http://<IP-сервера>:${PANEL_PORT}${PLAIN}"
+    echo -e "Адрес панели:      ${GREEN}http://${SERVER_IP}:${PANEL_PORT}${PLAIN}"
     echo -e "Логин админа:      ${GREEN}${ADMIN_USER}${PLAIN}"
     echo -e "Пароль админа:     ${GREEN}${ADMIN_PASS}${PLAIN}"
     echo -e "Файл конфигурации: ${BLUE}${PANEL_CONFIG_PATH}${PLAIN}"
     echo -e "База данных SQLite: ${BLUE}${PANEL_DB_PATH}${PLAIN}"
     echo -e "\n${WARNING} Запишите эти данные! Пароль сгенерирован автоматически."
+    
+    echo -e "\n--------------------------------------------------"
+    echo -e "ПЕРВЫЙ КЛИЕНТ ДЛЯ ПОДКЛЮЧЕНИЯ (Default Client):"
+    echo -e "Имя клиента:       ${GREEN}${CLIENT_USER}${PLAIN}"
+    echo -e "Пароль клиента:    ${GREEN}${CLIENT_PASS}${PLAIN}"
+    echo -e "Ссылка подключения:\n${YELLOW}${VPN_LINK}${PLAIN}"
+    echo -e "\nQR-код для подключения (сканируйте из клиента):"
+    if command -v qrencode >/dev/null; then
+        qrencode -t ansiutf8 "$VPN_LINK"
+    else
+        echo -e "[qrencode не установлен, не удалось вывести QR]"
+    fi
 else
-    echo -e "Адрес панели:      ${GREEN}http://<IP-сервера>:${PANEL_PORT}${PLAIN}"
+    echo -e "Адрес панели:      ${GREEN}http://${SERVER_IP}:${PANEL_PORT}${PLAIN}"
     echo -e "Служба панели обновлена и перезапущена."
 fi
-echo -e "Управление службой:"
-echo -e "  Запуск:    ${YELLOW}systemctl start hysteria-panel${PLAIN}"
-echo -e "  Остановка: ${YELLOW}systemctl stop hysteria-panel${PLAIN}"
-echo -e "  Статус:    ${YELLOW}systemctl status hysteria-panel${PLAIN}"
-echo -e "  Логи:      ${YELLOW}journalctl -u hysteria-panel -f${PLAIN}"
+echo -e "\nУправление службой:"
+echo -e "  Запуск:    systemctl start hysteria-panel"
+echo -e "  Остановка: systemctl stop hysteria-panel"
+echo -e "  Статус:    systemctl status hysteria-panel"
+echo -e "  Логи:      systemctl status -l --no-pager hysteria-panel"
 echo -e "==================================================\n"
