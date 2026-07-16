@@ -1,0 +1,38 @@
+# Бинарные файлы и сборки
+/hysteria-panel
+/hysteria-panel-linux-amd64
+/hysteria-panel-linux-arm64
+/frontend/dist/
+
+# Базы данных и файлы конфигурации
+/hysteria-panel.db
+/config.json
+/.init_admin
+/bin/
+/hysteria.yaml
+/server.crt
+/server.key
+
+# Node.js
+node_modules/
+/frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Логи Go
+*.log
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Настройки IDE
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
