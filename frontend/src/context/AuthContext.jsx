@@ -8,11 +8,11 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('token'));
   const [loading, setLoading] = useState(false);
 
-  // Настройка базового URL для Axios
-  // В продакшене запросы идут на тот же хост, в деве — на localhost:8080 (прокси или прямой урл)
-  const API_URL = window.location.origin.includes('localhost:5173') 
+  // Настройка базового URL для Axios с учетом секретного префикса
+  const basePath = window.basePath || '';
+  const API_URL = (window.location.origin.includes('localhost:5173') 
     ? 'http://localhost:8080' 
-    : window.location.origin;
+    : window.location.origin) + basePath;
 
   useEffect(() => {
     if (token) {

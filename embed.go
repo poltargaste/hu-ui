@@ -2,12 +2,14 @@ package main
 
 import (
 	"embed"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"hysteria-panel/backend/config"
 )
 
 //go:embed frontend/dist/*
@@ -25,6 +27,20 @@ func ServeFrontend(r *gin.Engine) {
 
 	r.NoRoute(func(c *gin.Context) {
 		path := c.Request.URL.Path
+		basePath := config.GlobalConfig.WebBasePath
+
+		// Если префикс задан, но запрос к нему не относится, отдаем 404
+		if basePath != "" && basePath != "/" {
+			if !strings.HasPrefix(path, basePath) {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Page not found"})
+				return
+			}
+			// Убираем префикс из пути для отдачи статики
+			path = strings.TrimPrefix(path, basePath)
+			if path == "" {
+				path = "/"
+			}
+		}
 
 		// Игнорируем запросы к API
 		if strings.HasPrefix(path, "/api") {
@@ -41,13 +57,17 @@ func ServeFrontend(r *gin.Engine) {
 			return
 		}
 
-		// Для всех остальных путей (SPA роутинг) отдаем index.html
+		// Для всех остальных путей (SPA роутинг) отдаем index.html с внедренной переменной пути
 		indexFile, err := subFS.Open("index.html")
 		if err == nil {
 			defer indexFile.Close()
 			content, err := io.ReadAll(indexFile)
 			if err == nil {
-				c.Data(http.StatusOK, "text/html; charset=utf-8", content)
+				// Динамически встраиваем window.basePath для React
+				// Например: window.basePath = '/xOmIAGBYWVNTlF7S5D';
+				jsInject := fmt.Sprintf("<script>window.basePath = '%s';</script>", basePath)
+				html := strings.Replace(string(content), "<div id=\"root\">", jsInject+"<div id=\"root\">", 1)
+				c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))
 				return
 			}
 		}

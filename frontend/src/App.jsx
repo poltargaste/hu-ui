@@ -100,12 +100,14 @@ const ProtectedLayout = () => {
   );
 };
 
+const basename = window.basePath || '/';
+
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <BrowserRouter>
+        <BrowserRouter basename={basename}>
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/*" element={<ProtectedLayout />} />

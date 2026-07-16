@@ -77,35 +77,44 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
-// SetupRouter настраивает эндпоинты панели
+// SetupRouter настраивает эндпоинты панели с учетом префикса пути
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
 	// Включаем CORS
 	r.Use(CORSMiddleware())
 
-	// Публичные маршруты
-	r.POST("/api/auth/login", Login)
+	basePath := config.GlobalConfig.WebBasePath
+	if basePath == "" {
+		basePath = "/"
+	}
 
-	// Защищенные маршруты
-	apiGroup := r.Group("/api")
-	apiGroup.Use(AuthMiddleware())
+	// Создаем корневую группу с префиксом пути
+	baseGroup := r.Group(basePath)
 	{
-		// Профиль админа
-		apiGroup.POST("/auth/change-password", ChangePassword)
+		// Публичные маршруты
+		baseGroup.POST("/api/auth/login", Login)
 
-		// Управление VPN пользователями
-		apiGroup.GET("/users", GetUsers)
-		apiGroup.POST("/users", CreateUser)
-		apiGroup.PUT("/users/:id", UpdateUser)
-		apiGroup.DELETE("/users/:id", DeleteUser)
-		apiGroup.POST("/users/:id/reset", ResetUserStats)
+		// Защищенные маршруты
+		apiGroup := baseGroup.Group("/api")
+		apiGroup.Use(AuthMiddleware())
+		{
+			// Профиль админа
+			apiGroup.POST("/auth/change-password", ChangePassword)
 
-		// Управление системой и статистика
-		apiGroup.GET("/system/stats", GetSystemStats)
-		apiGroup.POST("/system/core/start", StartCore)
-		apiGroup.POST("/system/core/stop", StopCore)
-		apiGroup.POST("/system/core/restart", RestartCore)
+			// Управление VPN пользователями
+			apiGroup.GET("/users", GetUsers)
+			apiGroup.POST("/users", CreateUser)
+			apiGroup.PUT("/users/:id", UpdateUser)
+			apiGroup.DELETE("/users/:id", DeleteUser)
+			apiGroup.POST("/users/:id/reset", ResetUserStats)
+
+			// Управление системой и статистика
+			apiGroup.GET("/system/stats", GetSystemStats)
+			apiGroup.POST("/system/core/start", StartCore)
+			apiGroup.POST("/system/core/stop", StopCore)
+			apiGroup.POST("/system/core/restart", RestartCore)
+		}
 	}
 
 	return r

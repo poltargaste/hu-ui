@@ -100,6 +100,8 @@ if [ ! -f "$PANEL_CONFIG_PATH" ]; then
     ADMIN_PASS=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 12)
     # Случайный обфускационный пароль для Hysteria
     HYSTERIA_OBFS=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    # Случайный секретный префикс URL панели (как в x-ui)
+    PANEL_PREFIX=$(openssl rand -base64 12 | tr -dc 'a-zA-Z0-9' | head -c 16)
     
     # Генерация первого дефолтного VPN-клиента
     CLIENT_USER="default_client"
@@ -110,6 +112,7 @@ if [ ! -f "$PANEL_CONFIG_PATH" ]; then
 {
   "panel_host": "0.0.0.0",
   "panel_port": $PANEL_PORT,
+  "web_base_path": "/$PANEL_PREFIX",
   "db_path": "$PANEL_DB_PATH",
   "hysteria_bin": "${PANEL_DATA_DIR}/bin/hysteria",
   "hysteria_config": "${PANEL_DATA_DIR}/hysteria.yaml",
@@ -120,8 +123,9 @@ if [ ! -f "$PANEL_CONFIG_PATH" ]; then
 EOF
     echo -e "${SUCCESS} Конфигурация успешно создана в ${PANEL_CONFIG_PATH}"
 else
-    # Чтение существующего порта из конфига
+    # Чтение существующего конфига
     PANEL_PORT=$(grep -o '"panel_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
+    PANEL_PREFIX=$(grep -o '"web_base_path":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4 | tr -d '/')
     HYSTERIA_PORT=$(grep -o '"hysteria_port":[^,]*' "$PANEL_CONFIG_PATH" | grep -o '[0-9]\+')
     HYSTERIA_OBFS=$(grep -o '"hysteria_obfs":[^,]*' "$PANEL_CONFIG_PATH" | cut -d'"' -f4)
     echo -e "${INFO} Обнаружена существующая конфигурация. Порт панели: $PANEL_PORT"
@@ -131,7 +135,7 @@ fi
 DOWNLOAD_URL="https://github.com/poltargaste/hu-ui/releases/latest/download/hu-ui-${ARCH_SUFFIX}"
 
 echo -e "${INFO} Скачивание исполняемого файла панели..."
-# В реальном сервере: curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
+# В реальной среде: curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
 if [ ! -f "$PANEL_BIN_PATH" ]; then
     echo -e "${WARNING} Настоящий URL релиза недоступен. Создается заглушка бинарника для настройки сервиса."
     echo '#!/bin/bash\necho "hu-ui Stub Running"\nsleep infinity' > "$PANEL_BIN_PATH"
@@ -214,9 +218,10 @@ LimitNOFILE=1048576
 WantedBy=multi-user.target
 EOF
 
-# Перезапуск демона systemd
+# Перезапуск демона systemd и запуск службы
 systemctl daemon-reload
 systemctl enable hu-ui.service
+systemctl restart hu-ui.service
 
 # Формирование клиентской ссылки подключения
 if [ "$IS_FIRST_INSTALL" = true ]; then
@@ -227,15 +232,22 @@ if [ "$IS_FIRST_INSTALL" = true ]; then
     VPN_LINK="${VPN_LINK}#${CLIENT_USER}-Hysteria2"
 fi
 
+# Формирование URL-адреса админ-панели с префиксом
+if [ -n "$PANEL_PREFIX" ]; then
+    PANEL_URL="http://${SERVER_IP}:${PANEL_PORT}/${PANEL_PREFIX}"
+else
+    PANEL_URL="http://${SERVER_IP}:${PANEL_PORT}/"
+fi
+
 echo -e "\n=================================================="
 echo -e "${SUCCESS} hu-ui Admin Panel успешно установлена!"
 if [ "$IS_FIRST_INSTALL" = true ]; then
-    echo -e "Адрес панели:      ${GREEN}http://${SERVER_IP}:${PANEL_PORT}${PLAIN}"
+    echo -e "Адрес панели (URL): ${GREEN}${PANEL_URL}${PLAIN}"
     echo -e "Логин админа:      ${GREEN}${ADMIN_USER}${PLAIN}"
     echo -e "Пароль админа:     ${GREEN}${ADMIN_PASS}${PLAIN}"
     echo -e "Файл конфигурации: ${BLUE}${PANEL_CONFIG_PATH}${PLAIN}"
     echo -e "База данных SQLite: ${BLUE}${PANEL_DB_PATH}${PLAIN}"
-    echo -e "\n${WARNING} Запишите эти данные! Пароль сгенерирован автоматически."
+    echo -e "\n${WARNING} Запишите эти данные! Доступ по корню / закрыт в целях безопасности."
     
     echo -e "\n--------------------------------------------------"
     echo -e "ПЕРВЫЙ КЛИЕНТ ДЛЯ ПОДКЛЮЧЕНИЯ (Default Client):"
@@ -249,12 +261,12 @@ if [ "$IS_FIRST_INSTALL" = true ]; then
         echo -e "[qrencode не установлен, не удалось вывести QR]"
     fi
 else
-    echo -e "Адрес панели:      ${GREEN}http://${SERVER_IP}:${PANEL_PORT}${PLAIN}"
+    echo -e "Адрес панели (URL): ${GREEN}${PANEL_URL}${PLAIN}"
     echo -e "Служба панели обновлена и перезапущена."
 fi
 echo -e "\nУправление службой:"
 echo -e "  Запуск:    systemctl start hu-ui"
 echo -e "  Остановка: systemctl stop hu-ui"
 echo -e "  Статус:    systemctl status hu-ui"
-echo -e "  Логи:      systemctl status -l --no-pager hu-ui"
+echo -e "  Логи:      journalctl -u hu-ui -f"
 echo -e "==================================================\n"
