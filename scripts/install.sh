@@ -15,7 +15,7 @@ PLAIN='\033[0m'
 
 INFO="[${BLUE}INFO${PLAIN}]"
 SUCCESS="[${GREEN}SUCCESS${PLAIN}]"
-WARNING="[${YELLOW}WARNING${PLAIN}]"
+WARNING="[${WARNING}WARNING${PLAIN}]"
 ERROR="[${RED}ERROR${PLAIN}]"
 
 # Проверка прав суперпользователя
@@ -49,7 +49,6 @@ case "$ARCH" in
 esac
 
 # Определяем реальный белый внешний IP сервера локально (в обход WARP/WireGuard)
-# Получаем все IPv4 адреса, исключая локальную петлю (127.0.0.1) и приватные подсети (RFC 1918), которые использует WARP
 SERVER_IP=$(ip -4 addr show | awk '/inet / {print $2}' | cut -d/ -f1 | grep -vE '^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)' | head -n 1 || echo "")
 
 # Если локально определить не удалось, используем резервный curl
@@ -163,10 +162,9 @@ fi
 DOWNLOAD_URL="https://github.com/poltargaste/hu-ui/releases/latest/download/hu-ui-${ARCH_SUFFIX}"
 
 echo -e "${INFO} Скачивание исполняемого файла панели..."
-# В реальной среде пытаемся скачать бинарник релиза
-# curl -L -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"
-if [ ! -f "$PANEL_BIN_PATH" ]; then
-    echo -e "${WARNING} Настоящий URL релиза недоступен. Создается заглушка бинарника для настройки сервиса."
+# Флаг --fail (-f) заставит curl выдать ошибку при 404 и не создавать пустой файл с HTML-ошибкой
+if ! curl -fsSL -o "$PANEL_BIN_PATH" "$DOWNLOAD_URL"; then
+    echo -e "${WARNING} Не удалось скачать бинарник с GitHub (релиз еще не создан). Создается рабочая заглушка."
     cat << 'EOF' > "$PANEL_BIN_PATH"
 #!/bin/bash
 echo "hu-ui Stub Running"
