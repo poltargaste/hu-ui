@@ -157,10 +157,23 @@ func DeleteUser(c *gin.Context) {
 		return
 	}
 
-	if err := database.DB.Delete(&user).Error; err != nil {
+	tx := database.DB.Begin()
+
+	// 1. Удаляем статистику пользователя
+	if err := tx.Where("user_id = ?", user.ID).Delete(&database.UserStats{}).Error; err != nil {
+		tx.Rollback()
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user stats"})
+		return
+	}
+
+	// 2. Удаляем самого пользователя
+	if err := tx.Delete(&user).Error; err != nil {
+		tx.Rollback()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 		return
 	}
+
+	tx.Commit()
 
 	// Перезапуск Hysteria 2
 	hysteria.ResetSessionStats()

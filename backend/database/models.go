@@ -25,7 +25,7 @@ type User struct {
 	ExpireDate   *time.Time `json:"expire_date"`                              // Дата окончания действия аккаунта
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
-	Stats        UserStats  `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE" json:"stats"`
+	Stats        UserStats  `gorm:"foreignKey:UserID" json:"stats"`
 }
 
 // UserStats хранит данные об использовании трафика
