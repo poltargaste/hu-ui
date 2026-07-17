@@ -48,11 +48,11 @@ case "$ARCH" in
         ;;
 esac
 
-# Определяем реальный физический IP сервера в обход WARP/WireGuard
-# Используем таблицу маршрутизации для нахождения внешнего интерфейса и его IP
-SERVER_IP=$(ip route get 1.1.1.1 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="src") print $(i+1)}' || echo "")
+# Определяем реальный белый внешний IP сервера локально (в обход WARP/WireGuard)
+# Получаем все IPv4 адреса, исключая локальную петлю (127.0.0.1) и приватные подсети (RFC 1918), которые использует WARP
+SERVER_IP=$(ip -4 addr show | awk '/inet / {print $2}' | cut -d/ -f1 | grep -vE '^(127\.|10\.|172\.(1[6-9]|2[0-9]|3[0-1])\.|192\.168\.)' | head -n 1 || echo "")
 
-# Если через таблицу маршрутов определить не удалось, используем резервный curl (пока WARP еще не включен)
+# Если локально определить не удалось, используем резервный curl
 if [ -z "$SERVER_IP" ]; then
     SERVER_IP=$(curl -s https://api.ipify.org || curl -s https://ifconfig.me || curl -s https://ipinfo.io/ip || echo "YOUR_SERVER_IP")
 fi
