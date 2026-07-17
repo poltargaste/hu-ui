@@ -12,7 +12,7 @@ export const AuthProvider = ({ children }) => {
   const basePath = window.basePath || '';
   const API_URL = (window.location.origin.includes('localhost:5173') 
     ? 'http://localhost:8080' 
-    : window.location.origin) + basePath;
+    : window.location.origin) + basePath + '/';
 
   useEffect(() => {
     if (token) {
@@ -32,6 +32,10 @@ export const AuthProvider = ({ children }) => {
           config.headers.Authorization = `Bearer ${token}`;
         }
         config.baseURL = API_URL;
+        // Убираем ведущий слэш, чтобы axios не игнорировал префикс пути в baseURL
+        if (config.url && config.url.startsWith('/')) {
+          config.url = config.url.substring(1);
+        }
         return config;
       },
       (error) => Promise.reject(error)
