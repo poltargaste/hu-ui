@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -55,6 +57,9 @@ func main() {
 	}
 	_ = db
 
+	// Выводим ссылку подключения для дефолтного клиента в лог
+	printDefaultClientLink(cfg)
+
 	// 4. Проверка и скачивание ядра Hysteria 2
 	log.Println("[INFO] Checking Hysteria 2 core binary...")
 	if err := hysteria.HysteriaMgr.DownloadIfMissing(); err != nil {
@@ -82,8 +87,15 @@ func main() {
 		Handler: router,
 	}
 
+	// Формируем красивую ссылку на веб-панель
+	serverIP := getLocalIP()
+	panelURL := fmt.Sprintf("http://%s:%d", serverIP, cfg.PanelPort)
+	if cfg.WebBasePath != "" {
+		panelURL = fmt.Sprintf("http://%s:%d%s", serverIP, cfg.PanelPort, cfg.WebBasePath)
+	}
+
 	go func() {
-		log.Printf("[SUCCESS] Web Admin Panel (hu-ui) is listening on http://%s", serverAddr)
+		log.Printf("[SUCCESS] Web Admin Panel (hu-ui) is listening on: %s", panelURL)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("[ERROR] Failed to listen and serve: %v", err)
 		}
@@ -102,4 +114,57 @@ func main() {
 	}
 
 	log.Println("[SUCCESS] hu-ui Panel stopped gracefully.")
+}
+
+func printDefaultClientLink(cfg *config.AppConfig) {
+	var defaultUser database.User
+	err := database.DB.Where("username = ?", "default_client").First(&defaultUser).Error
+	if err != nil {
+		return
+	}
+
+	serverIP := getLocalIP()
+	vpnLink := fmt.Sprintf("hysteria2://%s@%s:%d/?insecure=1", defaultUser.AuthValue, serverIP, cfg.HysteriaPort)
+	if cfg.HysteriaObfs != "" {
+		vpnLink = fmt.Sprintf("%s&obfs=aes-128-gcm&obfs-password=%s", vpnLink, cfg.HysteriaObfs)
+	}
+	vpnLink = fmt.Sprintf("%s#default_client-Hysteria2", vpnLink)
+
+	log.Println("--------------------------------------------------")
+	log.Println("[INFO] DEFAULT VPN CLIENT CREDENTIALS:")
+	log.Printf("Username: %s", defaultUser.Username)
+	log.Printf("Password: %s", defaultUser.AuthValue)
+	log.Printf("Connection Link: %s", vpnLink)
+	log.Println("--------------------------------------------------")
+}
+
+// getLocalIP возвращает внешний IP-адрес сервера локально, исключая приватные сети и loopback
+func getLocalIP() string {
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return "YOUR_SERVER_IP"
+	}
+	for _, address := range addrs {
+		if ipnet, ok := address.(*net.IPNet); ok && !ipnet.IP.IsLoopback() {
+			if ipnet.IP.To4() != nil {
+				ipStr := ipnet.IP.String()
+				// Исключаем петлю 127.x.x.x и приватные RFC 1918 сети (10.x, 192.168.x, 172.16-31.x)
+				if !strings.HasPrefix(ipStr, "127.") &&
+					!strings.HasPrefix(ipStr, "10.") &&
+					!strings.HasPrefix(ipStr, "192.168.") &&
+					!(strings.HasPrefix(ipStr, "172.") && isPrivate172(ipnet.IP)) {
+					return ipStr
+				}
+			}
+		}
+	}
+	return "YOUR_SERVER_IP"
+}
+
+func isPrivate172(ip net.IP) bool {
+	ipv4 := ip.To4()
+	if ipv4 == nil {
+		return false
+	}
+	return ipv4[1] >= 16 && ipv4[1] <= 31
 }

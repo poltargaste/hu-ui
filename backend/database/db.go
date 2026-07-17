@@ -1,6 +1,8 @@
 package database
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -38,6 +40,11 @@ func InitDB(dbPath string, configDir string) (*gorm.DB, error) {
 	// Инициализация администратора по умолчанию
 	if err := seedAdmin(configDir); err != nil {
 		log.Printf("Warning: failed to seed admin: %v", err)
+	}
+
+	// Инициализация первого пользователя по умолчанию
+	if err := seedDefaultUser(); err != nil {
+		log.Printf("Warning: failed to seed default user: %v", err)
 	}
 
 	return DB, nil
@@ -102,5 +109,48 @@ func seedAdmin(configDir string) error {
 	}
 
 	log.Printf("[SUCCESS] Administrator '%s' successfully provisioned.", adminUser)
+	return nil
+}
+
+// seedDefaultUser создает первого пользователя VPN, если таблица пользователей пуста
+func seedDefaultUser() error {
+	var count int64
+	if err := DB.Model(&User{}).Count(&count).Error; err != nil {
+		return err
+	}
+
+	// Если пользователи уже существуют, ничего не делаем
+	if count > 0 {
+		return nil
+	}
+
+	// Генерируем случайный пароль клиента
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	clientPass := base64.RawURLEncoding.EncodeToString(b)[:12]
+
+	user := User{
+		Username:  "default_client",
+		AuthValue: clientPass,
+		IsEnabled: true,
+	}
+
+	tx := DB.Begin()
+	if err := tx.Create(&user).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	stats := UserStats{
+		UserID: user.ID,
+	}
+	if err := tx.Create(&stats).Error; err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	tx.Commit()
+
+	log.Printf("[SUCCESS] Default VPN Client created. Username: default_client, Password: %s", clientPass)
 	return nil
 }
