@@ -15,7 +15,7 @@ PLAIN='\033[0m'
 
 INFO="[${BLUE}INFO${PLAIN}]"
 SUCCESS="[${GREEN}SUCCESS${PLAIN}]"
-WARNING="[${WARNING}WARNING${PLAIN}]"
+WARNING="[${YELLOW}WARNING${PLAIN}]"
 ERROR="[${RED}ERROR${PLAIN}]"
 
 # Проверка прав суперпользователя
@@ -75,11 +75,11 @@ fi
 echo -e "${INFO} Начало установки hu-ui..."
 
 # 1. Установка необходимых утилит
-echo -e "${INFO} Проверка и установка зависимостей (curl, sqlite3, openssl, qrencode)..."
+echo -e "${INFO} Проверка и установка зависимостей (curl, openssl, qrencode)..."
 if command -v apt-get >/dev/null; then
-    apt-get update -y && apt-get install -y curl sqlite3 openssl qrencode
+    apt-get update -y && apt-get install -y curl openssl qrencode
 elif command -v yum >/dev/null; then
-    yum install -y curl sqlite3 openssl qrencode
+    yum install -y curl openssl qrencode
 else
     echo -e "${WARNING} Не удалось определить пакетный менеджер. Убедитесь, что curl, sqlite3, openssl и qrencode установлены."
 fi
@@ -173,52 +173,9 @@ EOF
 fi
 chmod +x "$PANEL_BIN_PATH"
 
-# 5. Инициализация базы данных и таблиц
+# 5. Передача учётных данных Go-бэкенду (БД создаётся автоматически при запуске панели)
 if [ "$IS_FIRST_INSTALL" = true ]; then
-    echo -e "${INFO} Инициализация таблиц базы данных SQLite..."
-    
-    sqlite3 "$PANEL_DB_PATH" <<EOF
-CREATE TABLE IF NOT EXISTS admins (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    auth_value TEXT UNIQUE NOT NULL,
-    is_enabled BOOLEAN NOT NULL DEFAULT 1,
-    limit_speed_tx INTEGER NOT NULL DEFAULT 0,
-    limit_speed_rx INTEGER NOT NULL DEFAULT 0,
-    limit_traffic BIGINT NOT NULL DEFAULT 0,
-    expire_date DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS user_stats (
-    user_id INTEGER PRIMARY KEY,
-    traffic_tx BIGINT NOT NULL DEFAULT 0,
-    traffic_rx BIGINT NOT NULL DEFAULT 0,
-    last_active_at DATETIME,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-EOF
-
-    # Вставляем первого дефолтного пользователя
-    sqlite3 "$PANEL_DB_PATH" <<EOF
-INSERT OR IGNORE INTO users (id, username, auth_value, is_enabled) VALUES (1, '$CLIENT_USER', '$CLIENT_PASS', 1);
-INSERT OR IGNORE INTO user_stats (user_id, traffic_tx, traffic_rx) VALUES (1, 0, 0);
-EOF
-
-    # Записываем данные админа для инициализации бэкендом
+    # Записываем данные админа для инициализации бэкендом при первом запуске
     INIT_FILE="${PANEL_CONFIG_DIR}/.init_admin"
     cat <<EOF > "$INIT_FILE"
 {
