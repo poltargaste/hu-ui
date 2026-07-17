@@ -29,7 +29,21 @@ func ServeFrontend(r *gin.Engine) {
 		path := c.Request.URL.Path
 		basePath := config.GlobalConfig.WebBasePath
 
-		// Если префикс задан, но запрос к нему не относится, отдаем 404
+		// Статические ресурсы (JS, CSS, шрифты, картинки) отдаём напрямую,
+		// даже если запрос идёт без префикса basePath.
+		// Vite генерирует пути вида /assets/index-abc123.js,
+		// и браузер запрашивает их без префикса.
+		if strings.HasPrefix(path, "/assets/") || strings.HasPrefix(path, "/favicon") {
+			file, err := subFS.Open(strings.TrimPrefix(path, "/"))
+			if err == nil {
+				file.Close()
+				c.Request.URL.Path = path
+				fileServer.ServeHTTP(c.Writer, c.Request)
+				return
+			}
+		}
+
+		// Для всех остальных запросов проверяем префикс basePath
 		if basePath != "" && basePath != "/" {
 			if !strings.HasPrefix(path, basePath) {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Page not found"})
@@ -64,7 +78,6 @@ func ServeFrontend(r *gin.Engine) {
 			content, err := io.ReadAll(indexFile)
 			if err == nil {
 				// Динамически встраиваем window.basePath для React
-				// Например: window.basePath = '/xOmIAGBYWVNTlF7S5D';
 				jsInject := fmt.Sprintf("<script>window.basePath = '%s';</script>", basePath)
 				html := strings.Replace(string(content), "<div id=\"root\">", jsInject+"<div id=\"root\">", 1)
 				c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(html))

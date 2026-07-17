@@ -17,6 +17,16 @@ import (
 	"hysteria-panel/backend/database"
 )
 
+// HysteriaObfsConfig представляет структуру обфускации для Hysteria 2
+type HysteriaObfsConfig struct {
+	Type       string                 `yaml:"type"`
+	Salamander HysteriaSalamanderObfs `yaml:"salamander"`
+}
+
+type HysteriaSalamanderObfs struct {
+	Password string `yaml:"password"`
+}
+
 // HysteriaConfig представляет структуру конфигурации для ядра Hysteria 2
 type HysteriaConfig struct {
 	Listen string `yaml:"listen"`
@@ -24,7 +34,7 @@ type HysteriaConfig struct {
 		Cert string `yaml:"cert"`
 		Key  string `yaml:"key"`
 	} `yaml:"tls"`
-	Obfs string `yaml:"obfs,omitempty"`
+	Obfs *HysteriaObfsConfig `yaml:"obfs,omitempty"`
 	Auth struct {
 		Type     string            `yaml:"type"`
 		Userpass map[string]string `yaml:"userpass"`
@@ -75,7 +85,15 @@ func GenerateHysteriaConfig() error {
 	hCfg.Listen = fmt.Sprintf(":%d", cfg.HysteriaPort)
 	hCfg.TLS.Cert = certPath
 	hCfg.TLS.Key = keyPath
-	hCfg.Obfs = cfg.HysteriaObfs
+
+	if cfg.HysteriaObfs != "" {
+		hCfg.Obfs = &HysteriaObfsConfig{
+			Type: "salamander",
+			Salamander: HysteriaSalamanderObfs{
+				Password: cfg.HysteriaObfs,
+			},
+		}
+	}
 
 	hCfg.Auth.Type = "userpass"
 	hCfg.Auth.Userpass = userpassMap
